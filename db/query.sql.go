@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const createProduct = `-- name: CreateProduct :exec
@@ -24,6 +26,33 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) er
 	return err
 }
 
+const deleteProduct = `-- name: DeleteProduct :exec
+DELETE FROM products
+WHERE id = $1
+`
+
+func (q *Queries) DeleteProduct(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteProduct, id)
+	return err
+}
+
+const getProduct = `-- name: GetProduct :one
+SELECT id, name, price, created_at FROM products 
+WHERE id = $1
+`
+
+func (q *Queries) GetProduct(ctx context.Context, id uuid.UUID) (Product, error) {
+	row := q.db.QueryRowContext(ctx, getProduct, id)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Price,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listProducts = `-- name: ListProducts :many
 SELECT id, name, price, created_at FROM products
 ORDER BY name
@@ -34,9 +63,9 @@ func (q *Queries) ListProducts(ctx context.Context) ([]Product, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() // without this, my resources are leaked and not cleaned up
 	var items []Product
-	for rows.Next() {
+	for rows.Next() { // true because there is at least one row with data
 		var i Product
 		if err := rows.Scan(
 			&i.ID,
@@ -55,4 +84,21 @@ func (q *Queries) ListProducts(ctx context.Context) ([]Product, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateProduct = `-- name: UpdateProduct :exec
+UPDATE products
+SET name = $2, price = $3
+WHERE id = $1
+`
+
+type UpdateProductParams struct {
+	ID    uuid.UUID
+	Name  string
+	Price string
+}
+
+func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) error {
+	_, err := q.db.ExecContext(ctx, updateProduct, arg.ID, arg.Name, arg.Price)
+	return err
 }
